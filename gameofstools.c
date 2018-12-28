@@ -433,7 +433,7 @@ int deplacementManants(AListe chateau, Case plateau[NBLIG][NBCOL], int *tresor)
 
 int tourDeJeuClan(Monde *monde, AListe clan, int *tresor)
 {
-	int choix;
+	int i, j, choix;
 
 	/* Affichage plateau */
 	affichePlateau(monde->plateau);
@@ -441,6 +441,27 @@ int tourDeJeuClan(Monde *monde, AListe clan, int *tresor)
 	printf(clan == monde->rouge ? "Rouge\n" : "Bleu\n");
 	printf("Trésor : ");
 	printf("%d\n", *tresor);
+
+	/* Affichage du clan */
+	printf("\nClan :\n");
+	Agent *agent = clan;
+	while (agent != NULL) {
+		printf("- %c (%d,%d)\n", agent->genre, agent->posx, agent->posy);
+		agent = agent->asuiv;
+	}
+
+	/* Affichage des cases occupées */
+	printf("\nCases occupées :\n");
+	for (i = 0; i < NBLIG; i++) {
+		for (j = 0; j < NBCOL; j++) {
+			if (monde->plateau[i][j].chateau != NULL) {
+				printf("(%d,%d) %c C\n", i, j, monde->plateau[i][j].chateau->clan);
+			}
+			if (monde->plateau[i][j].habitant != NULL) {
+				printf("(%d,%d) %c %c\n", i, j, monde->plateau[i][j].habitant->clan, monde->plateau[i][j].habitant->genre);
+			}
+		}
+	}
 
 	/* Production chateau */
 	printf("\nChateau %s en (%d,%d), quel ordre ?\n", clan == monde->rouge ? "Rouge" : "Bleu", clan->posx, clan->posy);
