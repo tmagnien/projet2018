@@ -1,5 +1,6 @@
 #include <MLV/MLV_all.h>
 #include <stdlib.h>
+#include <stdio.h>
 #include "gameofstools.h"
 
 Agent *
@@ -308,7 +309,7 @@ int deplacementCombattants(AListe chateau, Case plateau[NBLIG][NBCOL])
 int deplacementManants(AListe chateau, Case plateau[NBLIG][NBCOL], int *tresor)
 {
 	int choix, deltax, deltay, newposx, newposy;
-	Agent *agent, *suiv;
+	Agent *agent, *suiv, *dernier_guerrier;
 
 	agent = chateau;
 	while(agent != NULL && agent->asuiv != NULL) {
@@ -413,16 +414,35 @@ int deplacementManants(AListe chateau, Case plateau[NBLIG][NBCOL], int *tresor)
 				suiv->desty = newposy;
 				/* Gestion du sur-place pour les manants */
 				if (plateau[suiv->posx][suiv->posy].clan == suiv->clan && suiv->destx == suiv->posx && suiv->desty == suiv->posy) {
-					/* Production (ou transformation guerrier) */
+					/* Ne rien faire, production ou se transformer en guerrier */
 					printf("Sur-place, votre choix :\n");
-					printf("1 . Ne rien faire\n2 . Produire\n");
+					printf("1 . Ne rien faire\n2 . Produire\n3 . Se transformer en guerrier\n");
 					scanf("%d", &choix);
-					if (choix == 2) {
-						/* Récolte */
-						*tresor++;
-						/* Définitivement immobile */
-						suiv->destx = -1;
-						suiv->desty = -1;
+					switch (choix) {
+						case 1:
+							/* Ne rien faire */
+							break;
+						case 2:
+							/* Récolte */
+							*tresor++;
+							/* Définitivement immobile */
+							suiv->destx = -1;
+							suiv->desty = -1;
+							break;
+						case 3:
+							/* Transformation en guerrier */
+							suiv->genre = GUERRIER;
+							/* Déplacement en fin de liste des guerriers */
+							dernier_guerrier = chateau;
+							/* On insère avant le premier manant ou en fin de liste */
+							while (dernier_guerrier->asuiv != NULL && dernier_guerrier->asuiv->genre != MANANT) {
+								dernier_guerrier = dernier_guerrier->asuiv;
+							}
+							/* On insère après l'élément courant */
+							agent->asuiv = suiv->asuiv;
+							suiv->asuiv = dernier_guerrier->asuiv;
+							dernier_guerrier->asuiv = suiv;
+							break;
 					}
 				}
 				break;
@@ -431,13 +451,51 @@ int deplacementManants(AListe chateau, Case plateau[NBLIG][NBCOL], int *tresor)
 	}
 }
 
-int tourDeJeuClan(Monde *monde, AListe clan, int *tresor)
+int sauvegardeMonde(Monde *monde, AListe clan)
+{
+	char nom_fichier[80];
+	FILE *fp;
+
+	/* Demande du nom de fichier */
+	printf("Nom du fichier de sauvegarde : ");
+	scanf("%s", &nom_fichier);
+
+	/* Ouverture du fichier */
+	fp = fopen(nom_fichier, "w");
+	if (fp == NULL) {
+		printf("Impossible de créer le fichier %s\n", nom_fichier);
+		return 0;
+	}
+
+	fwrite(&clan->clan, sizeof(clan->clan), 1, fp);
+	fwrite(" ", sizeof(char), 1, fp);
+	fwrite(&monde->tour, sizeof(monde->tour), 1, fp);
+	fwrite(" ", sizeof(char), 1, fp);
+	if (clan == monde->rouge) {
+		fwrite(&monde->tresorRouge, sizeof(monde->tresorRouge), 1, fp);
+		fwrite(" ", sizeof(char), 1, fp);
+		fwrite(&monde->tresorBleu, sizeof(monde->tresorBleu), 1, fp);
+	}
+	else {
+		fwrite(&monde->tresorBleu, sizeof(monde->tresorBleu), 1, fp);
+		fwrite(" ", sizeof(char), 1, fp);
+		fwrite(&monde->tresorRouge, sizeof(monde->tresorRouge), 1, fp);
+	}
+	fwrite("\n", sizeof(char), 1, fp);
+	fclose(fp);
+}
+
+int chargementMonde(Monde *monde)
+{
+}
+
+int tourDeJeuClan(Monde *monde, AListe clan, int *tresor, int sauvegarde_chargement)
 {
 	int i, j, choix;
 
 	/* Affichage plateau */
 	affichePlateau(monde->plateau);
-	printf("Tour du joueur ");
+	printf("Tour %d du joueur ", monde->tour);
 	printf(clan == monde->rouge ? "Rouge\n" : "Bleu\n");
 	printf("Trésor : ");
 	printf("%d\n", *tresor);
@@ -465,7 +523,10 @@ int tourDeJeuClan(Monde *monde, AListe clan, int *tresor)
 
 	/* Production chateau */
 	printf("\nChateau %s en (%d,%d), quel ordre ?\n", clan == monde->rouge ? "Rouge" : "Bleu", clan->posx, clan->posy);
-	printf("\n1 . Attendre\n2 . Produire Baron\n3 . Produire Guerrier\n4 . Produire Manant\n\n");
+	printf("\n1 . Attendre\n2 . Produire Baron\n3 . Produire Guerrier\n4 . Produire Manant\n5 . Fin de partie\n");
+	if (sauvegarde_chargement) {
+		printf("6 . Sauvegarde\n7 . Chargement\n");
+	}
 	scanf("%d", &choix);
 	switch (choix) {
 		case 1:
@@ -483,6 +544,23 @@ int tourDeJeuClan(Monde *monde, AListe clan, int *tresor)
 			/* Produire Manant */
 			produireManant(clan, tresor);
 			break;
+		case 5:
+			/* Fin de partie */
+			return 0;
+		case 6:
+			/* Sauvegarde */
+			if (sauvegarde_chargement) {
+				sauvegardeMonde(monde, clan);
+			}
+			break;
+		case 7:
+			/* Chargement */
+			if (sauvegarde_chargement) {
+				chargementMonde(monde);
+				/* Valeur spécifique pour repartir depuis la sauvegarde */
+				return -1;
+			}
+			break;
 	}
 	
 	/* Déplacement combattants */
@@ -490,6 +568,8 @@ int tourDeJeuClan(Monde *monde, AListe clan, int *tresor)
 
 	/* Déplacement et production manants */
 	deplacementManants(clan, monde->plateau, tresor);
+
+	return 1;
 }
 
 int main(int argc, char *argv[])
@@ -497,7 +577,7 @@ int main(int argc, char *argv[])
 	Monde monde;
 	Agent *chateau, *baron, *manant;
 	AListe clan;
-	int i, j;
+	int i, j, choix, sauvegarde_chargement;
 
 	/* Mise en place */
 	monde.tour = 0;
@@ -530,6 +610,14 @@ int main(int argc, char *argv[])
 
 	/* Tours de jeu */
 	while (1) {
+		/* Demande de sauvegarde ou de chargement tous les 5 tours */
+		if (monde.tour % 5 == 0) {
+			sauvegarde_chargement = 1;
+		}
+		else {
+			sauvegarde_chargement = 0;
+		}
+
 		/* Un tour de jeu en plus */
 		monde.tour++;
 
@@ -540,15 +628,23 @@ int main(int argc, char *argv[])
 		/* Tirage au sort bleu/rouge */
 		if (random() % 2 == 0) {
 			/* Rouge */
-			tourDeJeuClan(&monde, monde.rouge, &monde.tresorRouge);
+			if (!tourDeJeuClan(&monde, monde.rouge, &monde.tresorRouge, sauvegarde_chargement)) {
+				return -1;
+			}
 			/* Bleu */
-			tourDeJeuClan(&monde, monde.bleu, &monde.tresorBleu);
+			if (!tourDeJeuClan(&monde, monde.bleu, &monde.tresorBleu, 0)) {
+				return -1;
+			}
 		}
 		else {
 			/* Bleu */
-			tourDeJeuClan(&monde, monde.bleu, &monde.tresorBleu);
+			if (!tourDeJeuClan(&monde, monde.bleu, &monde.tresorBleu, sauvegarde_chargement)) {
+				return -1;
+			}
 			/* Rouge */
-			tourDeJeuClan(&monde, monde.rouge, &monde.tresorRouge);
+			if (!tourDeJeuClan(&monde, monde.rouge, &monde.tresorRouge, 0)) {
+				return -1;
+			}
 		}
 	}
 
