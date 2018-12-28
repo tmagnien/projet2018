@@ -133,7 +133,7 @@ void affichePlateau(Case plateau[NBLIG][NBCOL])
 	}
 }
 
-int produireAgent(AListe chateau, Monde monde, int *tresor, char genre, int temps, int cout)
+int produireAgent(AListe chateau, int *tresor, char genre, int temps, int cout)
 {
 	/* Le chateau est-il déjà en train de produire ? */
 	if (chateau->temps >= 0) {
@@ -155,19 +155,19 @@ int produireAgent(AListe chateau, Monde monde, int *tresor, char genre, int temp
 	return 1;
 }
 
-int produireBaron(AListe chateau, Monde monde, int *tresor)
+int produireBaron(AListe chateau, int *tresor)
 {
-	return produireAgent(chateau, monde, tresor, BARON, TBARON, CBARON);
+	return produireAgent(chateau, tresor, BARON, TBARON, CBARON);
 }
 
-int produireGuerrier(AListe chateau, Monde monde, int *tresor)
+int produireGuerrier(AListe chateau, int *tresor)
 {
-	return produireAgent(chateau, monde, tresor, GUERRIER, TGUERRIER, CGUERRIER);
+	return produireAgent(chateau, tresor, GUERRIER, TGUERRIER, CGUERRIER);
 }
 
-int produireManant(AListe chateau, Monde monde, int *tresor)
+int produireManant(AListe chateau, int *tresor)
 {
-	return produireAgent(chateau, monde, tresor, MANANT, TMANANT, CMANANT);
+	return produireAgent(chateau, tresor, MANANT, TMANANT, CMANANT);
 }
 
 int productionChateau(AListe chateau, Case plateau[NBLIG][NBCOL])
@@ -197,7 +197,7 @@ int productionChateau(AListe chateau, Case plateau[NBLIG][NBCOL])
 
 int deplacementCombattants(AListe chateau, Case plateau[NBLIG][NBCOL])
 {
-	int choix, newposx, newposy;
+	int choix, deltax, deltay, newposx, newposy;
 	Agent *agent, *suiv;
 
 	agent = chateau;
@@ -212,22 +212,45 @@ int deplacementCombattants(AListe chateau, Case plateau[NBLIG][NBCOL])
 		if (suiv->posx != suiv->destx || suiv->posy != suiv->desty) {
 			/* Déplacer l'agent */
 			if (suiv->destx > suiv->posx) {
+				deltax = 1;
 				newposx = suiv->posx + 1;
 			}
 			else if (suiv->destx < suiv->posx) {
+				deltax = -1;
 				newposx = suiv->posx - 1;
 			}
 			else {
+				deltax = 0;
 				newposx = suiv->posx;
 			}
 			if (suiv->desty > suiv->posy) {
+				deltay = 1;
 				newposy = suiv->posy + 1;
 			}
 			else if (suiv->desty < suiv->posy) {
+				deltay = -1;
 				newposy = suiv->posy - 1;
 			}
 			else {
+				deltay = 0;
 				newposy = suiv->posy;
+			}
+			/* Gestion case destination occupée */
+			if (plateau[suiv->posx + deltax][suiv->posy + deltay].habitant != NULL) {
+				/* On essaie de se déplacer sur un seul axe, au cas où */
+				if (plateau[suiv->posx][suiv->posy + deltay].habitant == NULL) {
+					newposx = suiv->posx;
+					newposy = suiv->posy + deltay;
+				}
+				else if (plateau[suiv->posx + deltax][suiv->posy].habitant == NULL) {
+					newposx = suiv->posx + deltax;
+					newposy = suiv->posy;
+				}
+				else {
+					/* Tant pis, on ne bouge pas à ce tour là */
+					agent = suiv;
+					continue;
+				}
 			}
 			/* Mise à jour plateau et coordonnées */
 			plateau[suiv->posx][suiv->posy].habitant = NULL;
@@ -271,10 +294,181 @@ int deplacementCombattants(AListe chateau, Case plateau[NBLIG][NBCOL])
 				}
 				suiv->destx = newposx;
 				suiv->desty = newposy;
+				/* Gestion du sur-place pour les guerriers */
+				if (suiv->genre == GUERRIER && suiv->destx == suiv->posx && suiv->desty == suiv->posy) {
+					/* Revendication de la case */
+					plateau[suiv->posx][suiv->posy].clan = suiv->clan;
+				}
 				break;
 		}
 		agent = suiv;
 	}
+}
+
+int deplacementManants(AListe chateau, Case plateau[NBLIG][NBCOL], int *tresor)
+{
+	int choix, deltax, deltay, newposx, newposy;
+	Agent *agent, *suiv;
+
+	agent = chateau;
+	while(agent != NULL && agent->asuiv != NULL) {
+		suiv = agent->asuiv;
+		/* Seuls les manants se déplacent pour le moment */
+		if (suiv->genre != MANANT) {
+			agent = suiv;
+			continue;
+		}
+		/* Manant immobile ? */
+		if (suiv->destx == -1 && suiv->desty == -1) {
+			/* Récolte */
+			*tresor++;
+			agent = suiv;
+			continue;
+		}
+		/* Déplacement en cours ? */
+		if (suiv->posx != suiv->destx || suiv->posy != suiv->desty) {
+			/* Déplacer l'agent */
+			if (suiv->destx > suiv->posx) {
+				deltax = 1;
+				newposx = suiv->posx + 1;
+			}
+			else if (suiv->destx < suiv->posx) {
+				deltax = -1;
+				newposx = suiv->posx - 1;
+			}
+			else {
+				deltax = 0;
+				newposx = suiv->posx;
+			}
+			if (suiv->desty > suiv->posy) {
+				deltay = 1;
+				newposy = suiv->posy + 1;
+			}
+			else if (suiv->desty < suiv->posy) {
+				deltay = -1;
+				newposy = suiv->posy - 1;
+			}
+			else {
+				deltay = 0;
+				newposy = suiv->posy;
+			}
+			/* Gestion case destination occupée */
+			if (plateau[suiv->posx + deltax][suiv->posy + deltay].habitant != NULL) {
+				/* On essaie de se déplacer sur un seul axe, au cas où */
+				if (plateau[suiv->posx][suiv->posy + deltay].habitant == NULL) {
+					newposx = suiv->posx;
+					newposy = suiv->posy + deltay;
+				}
+				else if (plateau[suiv->posx + deltax][suiv->posy].habitant == NULL) {
+					newposx = suiv->posx + deltax;
+					newposy = suiv->posy;
+				}
+				else {
+					/* Tant pis, on ne bouge pas à ce tour là */
+					agent = suiv;
+					continue;
+				}
+			}
+			/* Mise à jour plateau et coordonnées */
+			plateau[suiv->posx][suiv->posy].habitant = NULL;
+			suiv->posx = newposx;
+			suiv->posy = newposy;
+			plateau[suiv->posx][suiv->posy].habitant = suiv;
+			/* Suivant */
+			agent = suiv;
+			continue;
+		}
+		/* Choix de la destination */
+		printf("Agent %c en position (%d,%d), votre choix :\n", suiv->genre, suiv->posx, suiv->posy);
+		printf("1 . Destruction\n2 . Déplacement\n");
+		scanf("%d", &choix);
+		switch (choix) {
+			case 1:
+				/* Destruction */
+				/* Retrait du plateau */
+				plateau[suiv->posx][suiv->posy].habitant = NULL;
+				/* Suppression de la liste et libération de la mémoire */
+				agent->asuiv = suiv->asuiv;
+				free(suiv);
+				suiv = agent->asuiv;
+				break;
+			case 2:
+				/* Déplacement */
+				printf("Destination x,y :\n");
+				scanf("%d,%d", &newposx, &newposy);
+				/* On ramène à des coordonnées valides */
+				if (newposx < 0) {
+					newposx = 0;
+				}
+				if (newposx > NBLIG - 1) {
+					newposx = NBLIG - 1;
+				}
+				if (newposy < 0) {
+					newposy = 0;
+				}
+				if (newposy > NBCOL - 1) {
+					newposy = NBCOL - 1;
+				}
+				suiv->destx = newposx;
+				suiv->desty = newposy;
+				/* Gestion du sur-place pour les manants */
+				if (plateau[suiv->posx][suiv->posy].clan == suiv->clan && suiv->destx == suiv->posx && suiv->desty == suiv->posy) {
+					/* Production (ou transformation guerrier) */
+					printf("Sur-place, votre choix :\n");
+					printf("1 . Ne rien faire\n2 . Produire\n");
+					scanf("%d", &choix);
+					if (choix == 2) {
+						/* Récolte */
+						*tresor++;
+						/* Définitivement immobile */
+						suiv->destx = -1;
+						suiv->desty = -1;
+					}
+				}
+				break;
+		}
+		agent = suiv;
+	}
+}
+
+int tourDeJeuClan(Monde *monde, AListe clan, int *tresor)
+{
+	int choix;
+
+	/* Affichage plateau */
+	affichePlateau(monde->plateau);
+	printf("Tour du joueur ");
+	printf(clan == monde->rouge ? "Rouge\n" : "Bleu\n");
+	printf("Trésor : ");
+	printf("%d\n", *tresor);
+
+	/* Production chateau */
+	printf("\nChateau %s en (%d,%d), quel ordre ?\n", clan == monde->rouge ? "Rouge" : "Bleu", clan->posx, clan->posy);
+	printf("\n1 . Attendre\n2 . Produire Baron\n3 . Produire Guerrier\n4 . Produire Manant\n\n");
+	scanf("%d", &choix);
+	switch (choix) {
+		case 1:
+			/* Attendre */
+			break;
+		case 2:
+			/* Produire Baron */
+			produireBaron(clan, tresor);
+			break;
+		case 3:
+			/* Produire Guerrier */
+			produireGuerrier(clan, tresor);
+			break;
+		case 4:
+			/* Produire Manant */
+			produireManant(clan, tresor);
+			break;
+	}
+	
+	/* Déplacement combattants */
+	deplacementCombattants(clan, monde->plateau);
+
+	/* Déplacement et production manants */
+	deplacementManants(clan, monde->plateau, tresor);
 }
 
 int main(int argc, char *argv[])
@@ -282,7 +476,7 @@ int main(int argc, char *argv[])
 	Monde monde;
 	Agent *chateau, *baron, *manant;
 	AListe clan;
-	int i, j, choix;
+	int i, j;
 
 	/* Mise en place */
 	monde.tour = 0;
@@ -325,47 +519,16 @@ int main(int argc, char *argv[])
 		/* Tirage au sort bleu/rouge */
 		if (random() % 2 == 0) {
 			/* Rouge */
-			clan = monde.rouge;
+			tourDeJeuClan(&monde, monde.rouge, &monde.tresorRouge);
+			/* Bleu */
+			tourDeJeuClan(&monde, monde.bleu, &monde.tresorBleu);
 		}
 		else {
 			/* Bleu */
-			clan = monde.bleu;
+			tourDeJeuClan(&monde, monde.bleu, &monde.tresorBleu);
+			/* Rouge */
+			tourDeJeuClan(&monde, monde.rouge, &monde.tresorRouge);
 		}
-
-		/* Affichage plateau */
-		affichePlateau(monde.plateau);
-		printf("Tour du joueur ");
-		printf(clan == monde.rouge ? "Rouge\n" : "Bleu\n");
-		printf("Trésor : ");
-		printf("%d\n", clan == monde.rouge ? monde.tresorRouge : monde.tresorBleu);
-
-		/* Production chateau */
-		printf("\nChateau %s en (%d,%d), quel ordre ?\n", clan == monde.rouge ? "Rouge" : "Bleu", clan->posx, clan->posy);
-		printf("\n1 . Attendre\n2 . Produire Baron\n3 . Produire Guerrier\n4 . Produire Manant\n\n");
-		scanf("%d", &choix);
-		switch (choix) {
-			case 1:
-				/* Attendre */
-				break;
-			case 2:
-				/* Produire Baron */
-				produireBaron(clan, monde, clan == monde.rouge ? &monde.tresorRouge : &monde.tresorBleu);
-				break;
-			case 3:
-				/* Produire Guerrier */
-				produireGuerrier(clan, monde, clan == monde.rouge ? &monde.tresorRouge : &monde.tresorBleu);
-				break;
-			case 4:
-				/* Produire Manant */
-				produireManant(clan, monde, clan == monde.rouge ? &monde.tresorRouge : &monde.tresorBleu);
-				break;
-		}
-		
-		/* Déplacement combattants */
-		deplacementCombattants(clan, monde.plateau);
-
-		/* Production manants */
-		/* Déplacement manants */
 	}
 
 	/* Fin du jeu */
