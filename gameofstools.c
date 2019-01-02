@@ -104,19 +104,23 @@ void affichePlateau(Case plateau[NBLIG][NBCOL])
 	for (i = 0; i < NBLIG; i++) {
 		for (j = 0; j < NBCOL; j++) {
 			printf("|");
-			if (plateau[i][j].chateau != NULL) {
-				printf("%cC000", plateau[i][j].chateau->clan);
-			}
-			else if (plateau[i][j].habitant != NULL) {
-				printf("%c ", plateau[i][j].habitant->clan);
-				if (plateau[i][j].habitant->genre == BARON) {
-					printf("100");
+			if (plateau[i][j].chateau != NULL || plateau[i][j].habitant != NULL) {
+				if (plateau[i][j].chateau != NULL) {
+					printf("%cC", plateau[i][j].chateau->clan);
 				}
-				else if (plateau[i][j].habitant->genre == GUERRIER) {
-					printf("010");
+				else {
+					printf("%c ", plateau[i][j].habitant->clan);
 				}
-				else if (plateau[i][j].habitant->genre == MANANT) {
-					printf("001");
+				if (plateau[i][j].habitant != NULL) {
+					if (plateau[i][j].habitant->genre == BARON) {
+						printf("100");
+					}
+					else if (plateau[i][j].habitant->genre == GUERRIER) {
+						printf("010");
+					}
+					else if (plateau[i][j].habitant->genre == MANANT) {
+						printf("001");
+					}
 				}
 			}
 			else if (plateau[i][j].clan != LIBRE) {
@@ -198,10 +202,12 @@ int productionChateau(AListe chateau, Case plateau[NBLIG][NBCOL])
 	return 0;
 }
 
-int deplacementCombattants(AListe chateau, Case plateau[NBLIG][NBCOL])
+int deplacementCombattants(AListe chateau, Case plateau[NBLIG][NBCOL], int *tresor)
 {
 	int choix, deltax, deltay, newposx, newposy;
+	char choix_chateau;
 	Agent *agent, *suiv;
+	AListe new_chateau;
 
 	agent = chateau;
 	while(agent != NULL && agent->asuiv != NULL) {
@@ -297,6 +303,16 @@ int deplacementCombattants(AListe chateau, Case plateau[NBLIG][NBCOL])
 				}
 				suiv->destx = newposx;
 				suiv->desty = newposy;
+				/* Gestion du sur-place pour les barons */
+				if (suiv->genre == BARON && suiv->destx == suiv->posx && suiv->desty == suiv->posy && *tresor >= CCHATEAU) {
+					/* Revendication de la case */
+					printf("Construction d'un nouveau chateau (o/n) ?\n");
+					scanf(" %c", &choix_chateau);
+					if (choix_chateau == 'o' || choix_chateau == 'O') {
+						new_chateau = ajouteChateau(chateau->vsuiv, suiv->clan, suiv->posx, suiv->posy);
+						plateau[suiv->posx][suiv->posy].chateau = new_chateau;
+					}
+				}
 				/* Gestion du sur-place pour les guerriers */
 				if (suiv->genre == GUERRIER && suiv->destx == suiv->posx && suiv->desty == suiv->posy) {
 					/* Revendication de la case */
@@ -457,6 +473,7 @@ int sauvegardeMonde(Monde *monde, AListe clan)
 {
 	char nom_fichier[80];
 	FILE *fp;
+	AListe chateau;
 	Agent *agent;
 	int i, j;
 
@@ -476,32 +493,40 @@ int sauvegardeMonde(Monde *monde, AListe clan)
 
 	/* Chaque ligne représente les données d'un agent */
 	/* L'odre n'a pas d'importance, commençons par le rouge */
-	agent = monde->rouge;
-	while (agent != NULL) {
-		fprintf(fp, "%c%c", agent->clan, agent->genre);
-		if (agent->genre == CHATEAU && agent->produit != LIBRE) {
-			fprintf(fp, "%c %d", agent->produit, agent->temps); 
+	chateau = monde->rouge;
+	while (chateau != NULL) {
+		agent = chateau;
+		while (agent != NULL) {
+			fprintf(fp, "%c%c", agent->clan, agent->genre);
+			if (agent->genre == CHATEAU && agent->produit != LIBRE) {
+				fprintf(fp, "%c %d", agent->produit, agent->temps); 
+			}
+			else {
+				fprintf(fp, "- 0");
+			}
+			/* Maintenant les coordonnées actuelles et destination */
+			fprintf(fp, " %d %d %d %d\n", agent->posx, agent->posy, agent->destx, agent->desty);
+			agent = agent->asuiv;
 		}
-		else {
-			fprintf(fp, "- 0");
-		}
-		/* Maintenant les coordonnées actuelles et destination */
-		fprintf(fp, " %d %d %d %d\n", agent->posx, agent->posy, agent->destx, agent->desty);
-		agent = agent->asuiv;
+		chateau = chateau->vsuiv;
 	}
 	/* Même chose pour le bleu */
-	agent = monde->bleu;
-	while (agent != NULL) {
-		fprintf(fp, "%c%c", agent->clan, agent->genre);
-		if (agent->genre == CHATEAU && agent->produit != LIBRE) {
-			fprintf(fp, "%c %d", agent->produit, agent->temps); 
+	chateau = monde->bleu;
+	while (chateau != NULL) {
+		agent = chateau;
+		while (agent != NULL) {
+			fprintf(fp, "%c%c", agent->clan, agent->genre);
+			if (agent->genre == CHATEAU && agent->produit != LIBRE) {
+				fprintf(fp, "%c %d", agent->produit, agent->temps); 
+			}
+			else {
+				fprintf(fp, "- 0");
+			}
+			/* Maintenant les coordonnées actuelles et destination */
+			fprintf(fp, " %d %d %d %d\n", agent->posx, agent->posy, agent->destx, agent->desty);
+			agent = agent->asuiv;
 		}
-		else {
-			fprintf(fp, "- 0");
-		}
-		/* Maintenant les coordonnées actuelles et destination */
-		fprintf(fp, " %d %d %d %d\n", agent->posx, agent->posy, agent->destx, agent->desty);
-		agent = agent->asuiv;
+		chateau = chateau->vsuiv;
 	}
 
 	/* Maintenant on sauvegarde les lignes du plateau */
@@ -625,9 +650,56 @@ int chargementMonde(Monde *monde, AListe clan)
 	return 1;
 }
 
+int choixProductionChateau(Agent *chateau, Monde *monde, int *tresor, AListe clan, int sauvegarde_chargement)
+{
+	int choix;
+
+	printf("\nChateau %s en (%d,%d), quel ordre ?\n", chateau->clan == ROUGE ? "Rouge" : "Bleu", chateau->posx, chateau->posy);
+	printf("\n1 . Attendre\n2 . Produire Baron\n3 . Produire Guerrier\n4 . Produire Manant\n5 . Fin de partie\n");
+	if (sauvegarde_chargement) {
+		printf("6 . Sauvegarde\n7 . Chargement\n");
+	}
+	scanf("%d", &choix);
+	switch (choix) {
+		case 1:
+			/* Attendre */
+			break;
+		case 2:
+			/* Produire Baron */
+			produireBaron(chateau, tresor);
+			break;
+		case 3:
+			/* Produire Guerrier */
+			produireGuerrier(chateau, tresor);
+			break;
+		case 4:
+			/* Produire Manant */
+			produireManant(chateau, tresor);
+			break;
+		case 5:
+			/* Fin de partie */
+			return 0;
+		case 6:
+			/* Sauvegarde */
+			if (sauvegarde_chargement) {
+				sauvegardeMonde(monde, clan);
+			}
+			break;
+		case 7:
+			/* Chargement */
+			if (sauvegarde_chargement) {
+				/* Valeur spécifique pour repartir depuis la sauvegarde */
+				return -1;
+			}
+			break;
+	}
+	return 1;
+}
+
 int tourDeJeuClan(Monde *monde, AListe clan, int *tresor, int sauvegarde_chargement)
 {
-	int i, j, choix;
+	int i, j, choix, ret;
+	Agent *chateau;
 
 	/* Affichage plateau */
 	affichePlateau(monde->plateau);
@@ -658,54 +730,29 @@ int tourDeJeuClan(Monde *monde, AListe clan, int *tresor, int sauvegarde_chargem
 	}
 
 	/* Production chateau */
-	printf("\nChateau %s en (%d,%d), quel ordre ?\n", clan == monde->rouge ? "Rouge" : "Bleu", clan->posx, clan->posy);
-	printf("\n1 . Attendre\n2 . Produire Baron\n3 . Produire Guerrier\n4 . Produire Manant\n5 . Fin de partie\n");
-	if (sauvegarde_chargement) {
-		printf("6 . Sauvegarde\n7 . Chargement\n");
-	}
-	scanf("%d", &choix);
-	switch (choix) {
-		case 1:
-			/* Attendre */
-			break;
-		case 2:
-			/* Produire Baron */
-			produireBaron(clan, tresor);
-			break;
-		case 3:
-			/* Produire Guerrier */
-			produireGuerrier(clan, tresor);
-			break;
-		case 4:
-			/* Produire Manant */
-			produireManant(clan, tresor);
-			break;
-		case 5:
-			/* Fin de partie */
-			return 0;
-		case 6:
-			/* Sauvegarde */
-			if (sauvegarde_chargement) {
-				sauvegardeMonde(monde, clan);
-			}
-			break;
-		case 7:
-			/* Chargement */
-			if (sauvegarde_chargement) {
-				return -1;
-				if (chargementMonde(monde, clan) != 0) {
-					/* Valeur spécifique pour repartir depuis la sauvegarde */
-					return -1;
-				}
-			}
-			break;
+	chateau = clan;
+	while (chateau != NULL) {
+		/* Production du chateau */
+		ret = choixProductionChateau(chateau, monde, tresor, clan, sauvegarde_chargement);
+		if (ret <= 0) {
+			return ret;
+		}
+		chateau = chateau->vsuiv;
 	}
 	
-	/* Déplacement combattants */
-	deplacementCombattants(clan, monde->plateau);
+	/* Déplacement et production combattants */
+	chateau = clan;
+	while (chateau != NULL) {
+		deplacementCombattants(chateau, monde->plateau, tresor);
+		chateau = chateau->vsuiv;
+	}
 
 	/* Déplacement et production manants */
-	deplacementManants(clan, monde->plateau, tresor);
+	chateau = clan;
+	while (chateau != NULL) {
+		deplacementManants(chateau, monde->plateau, tresor);
+		chateau = chateau->vsuiv;
+	}
 
 	return 1;
 }
