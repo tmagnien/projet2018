@@ -715,7 +715,7 @@ int main(int argc, char *argv[])
 	Monde *monde, *newmonde;
 	Agent *chateau, *baron, *manant;
 	AListe clan, newclan;
-	int i, j, choix, sauvegarde_chargement, ret;
+	int i, j, choix, sauvegarde_chargement, ret, tour;
 
 	/* Mise en place */
 	monde = malloc(sizeof(Monde));
@@ -747,6 +747,9 @@ int main(int argc, char *argv[])
 	/* Initialisation random */
 	srandom(time(NULL));
 
+	/* Pour le chargement */
+	newclan = NULL;
+
 	/* Tours de jeu */
 	while (1) {
 		/* Demande de sauvegarde ou de chargement tous les 5 tours */
@@ -764,8 +767,19 @@ int main(int argc, char *argv[])
 		productionChateau(monde->rouge, monde->plateau);
 		productionChateau(monde->bleu, monde->plateau);
 
-		/* Tirage au sort bleu/rouge */
-		if (random() % 2 == 0) {
+		/* Tirage au sort bleu/rouge (forcé si chargement) */
+		if (newclan != NULL) {
+			if (newclan == monde->rouge) {
+				tour = 0;
+			}
+			else {
+				tour = 1;
+			}
+		}
+		else {
+			tour = random() % 2;
+		}
+		if (tour == 0) {
 			/* Rouge */
 			ret = tourDeJeuClan(monde, monde->rouge, &monde->tresorRouge, sauvegarde_chargement);
 			if (ret == 0) {
