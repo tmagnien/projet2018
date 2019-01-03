@@ -4,6 +4,8 @@
 #include <time.h>
 #include "gameofstools.h"
 
+#define CASE 30
+
 Agent *
 ajouteChateau(AListe clan, char couleur, int x, int y)
 {
@@ -91,56 +93,60 @@ ajouteAgent(Agent *chateau, char genre, Case plateau[NBLIG][NBCOL])
 	return newagent;
 }
 
+void afficheCase(Case c, int i, int j)
+{
+	MLV_Color couleur;
+
+	if (c.clan == ROUGE) {
+		couleur = MLV_COLOR_RED;
+	}
+	else if (c.clan == BLEU) {
+		couleur = MLV_COLOR_BLUE;
+	}
+	else {
+		couleur = MLV_COLOR_WHITE;
+	}
+	MLV_draw_rectangle(j*CASE, i*CASE, CASE, CASE, couleur);
+	if (c.chateau) {
+		if (c.chateau->clan == ROUGE) {
+			couleur = MLV_COLOR_RED;
+		}
+		else {
+			couleur = MLV_COLOR_BLUE;
+		}
+		MLV_draw_text(j*CASE, i*CASE, "C", couleur);
+	}
+	if (c.habitant) {
+		if (c.habitant->clan == ROUGE) {
+			couleur = MLV_COLOR_RED;
+		}
+		else {
+			couleur = MLV_COLOR_BLUE;
+		}
+		switch (c.habitant->genre) {
+			case BARON:
+				MLV_draw_text(j*CASE + CASE/2, i*CASE, "b", couleur);
+				break;
+			case GUERRIER:
+				MLV_draw_text(j*CASE, i*CASE + CASE/2, "g", couleur);
+				break;
+			case MANANT:
+				MLV_draw_text(j*CASE + CASE/2, i*CASE + CASE/2, "m", couleur);
+				break;
+		}
+	}
+}
+
 void affichePlateau(Case plateau[NBLIG][NBCOL])
 {
 	int i, j;
 
-	/* Une première ligne horizontale */
-	for (j = 0; j < NBCOL; j++) {
-		printf("------");
-	}
-	printf("-\n");
-
 	for (i = 0; i < NBLIG; i++) {
 		for (j = 0; j < NBCOL; j++) {
-			printf("|");
-			if (plateau[i][j].chateau != NULL || plateau[i][j].habitant != NULL) {
-				if (plateau[i][j].chateau != NULL) {
-					printf("%cC", plateau[i][j].chateau->clan);
-				}
-				else {
-					printf("%c ", plateau[i][j].habitant->clan);
-				}
-				if (plateau[i][j].habitant != NULL) {
-					if (plateau[i][j].habitant->genre == BARON) {
-						printf("100");
-					}
-					else if (plateau[i][j].habitant->genre == GUERRIER) {
-						printf("010");
-					}
-					else if (plateau[i][j].habitant->genre == MANANT) {
-						printf("001");
-					}
-				}
-				else {
-					printf("000");
-				}
-			}
-			else if (plateau[i][j].clan != LIBRE) {
-				printf("  %c  ", plateau[i][j].clan);
-			}
-			else {
-				printf("     ");
-			}
+			afficheCase(plateau[i][j], i, j);
 		}
-		/* Dernière colonne */
-		printf("|\n");
-		/* Ligne horizontale inférieure */
-		for (j = 0; j < NBCOL; j++) {
-			printf("------");
-		}
-		printf("-\n");
 	}
+	MLV_actualise_window();
 }
 
 int produireAgent(AListe chateau, int *tresor, char genre, int temps, int cout)
@@ -673,13 +679,18 @@ int chargementMonde(Monde *monde, AListe clan)
 int choixProductionChateau(Agent *chateau, Monde *monde, int *tresor, AListe clan, int sauvegarde_chargement)
 {
 	int choix;
+	int x, y;
 
-	printf("\nChateau %s en (%d,%d), quel ordre ?\n", chateau->clan == ROUGE ? "Rouge" : "Bleu", chateau->posx, chateau->posy);
-	printf("\n1 . Attendre\n2 . Produire Baron\n3 . Produire Guerrier\n4 . Produire Manant\n5 . Fin de partie\n");
-	if (sauvegarde_chargement) {
-		printf("6 . Sauvegarde\n7 . Chargement\n");
-	}
-	scanf("%d", &choix);
+	MLV_draw_text(CASE*(NBCOL +1), CASE*3, "Chateau %s en (%d,%d)", MLV_COLOR_WHITE, chateau->clan == ROUGE ? "Rouge" : "Bleu", chateau->posx, chateau->posy);
+	MLV_draw_text_box(CASE*(NBCOL+1), CASE*5, CASE*5, CASE, "Attendre", 0, MLV_COLOR_WHITE, MLV_COLOR_WHITE, MLV_COLOR_BLACK, MLV_TEXT_CENTER, MLV_HORIZONTAL_CENTER, MLV_VERTICAL_CENTER);
+	MLV_draw_text_box(CASE*(NBCOL+1), CASE*6, CASE*5, CASE, "Produire baron", 0, MLV_COLOR_WHITE, MLV_COLOR_WHITE, MLV_COLOR_BLACK, MLV_TEXT_CENTER, MLV_HORIZONTAL_CENTER, MLV_VERTICAL_CENTER);
+	MLV_draw_text_box(CASE*(NBCOL+1), CASE*7, CASE*5, CASE, "Produire guerrier", 0, MLV_COLOR_WHITE, MLV_COLOR_WHITE, MLV_COLOR_BLACK, MLV_TEXT_CENTER, MLV_HORIZONTAL_CENTER, MLV_VERTICAL_CENTER);
+	MLV_draw_text_box(CASE*(NBCOL+1), CASE*8, CASE*5, CASE, "Produire manant", 0, MLV_COLOR_WHITE, MLV_COLOR_WHITE, MLV_COLOR_BLACK, MLV_TEXT_CENTER, MLV_HORIZONTAL_CENTER, MLV_VERTICAL_CENTER);
+	MLV_draw_text_box(CASE*(NBCOL+1), CASE*9, CASE*5, CASE, "Fin de partie", 0, MLV_COLOR_WHITE, MLV_COLOR_WHITE, MLV_COLOR_BLACK, MLV_TEXT_CENTER, MLV_HORIZONTAL_CENTER, MLV_VERTICAL_CENTER);
+	MLV_draw_text_box(CASE*(NBCOL+1), CASE*11, CASE*5, CASE, "Sauvegarde", 0, MLV_COLOR_WHITE, MLV_COLOR_WHITE, MLV_COLOR_BLACK, MLV_TEXT_CENTER, MLV_HORIZONTAL_CENTER, MLV_VERTICAL_CENTER);
+	MLV_draw_text_box(CASE*(NBCOL+1), CASE*12, CASE*5, CASE, "Chargement", 0, MLV_COLOR_WHITE, MLV_COLOR_WHITE, MLV_COLOR_BLACK, MLV_TEXT_CENTER, MLV_HORIZONTAL_CENTER, MLV_VERTICAL_CENTER);
+	MLV_actualise_window();
+	MLV_wait_mouse(&x, &y);
 	switch (choix) {
 		case 1:
 			/* Attendre */
@@ -723,35 +734,11 @@ int tourDeJeuClan(Monde *monde, AListe clan, int *tresor, int sauvegarde_chargem
 
 	/* Affichage plateau */
 	affichePlateau(monde->plateau);
-	printf("Tour %d du joueur ", monde->tour);
-	printf(clan == monde->rouge ? "Rouge\n" : "Bleu\n");
-	printf("Trésor : ");
-	printf("%d\n", *tresor);
 
-	/* Affichage du clan */
-	printf("\nClan :\n");
-	chateau = clan;
-	while (chateau != NULL) {
-		agent = chateau;
-		while (agent != NULL) {
-			printf("- %c (%d,%d)\n", agent->genre, agent->posx, agent->posy);
-			agent = agent->asuiv;
-		}
-		chateau = chateau->vsuiv;
-	}
-
-	/* Affichage des cases occupées */
-	printf("\nCases occupées :\n");
-	for (i = 0; i < NBLIG; i++) {
-		for (j = 0; j < NBCOL; j++) {
-			if (monde->plateau[i][j].chateau != NULL) {
-				printf("(%d,%d) %c C\n", i, j, monde->plateau[i][j].chateau->clan);
-			}
-			if (monde->plateau[i][j].habitant != NULL) {
-				printf("(%d,%d) %c %c\n", i, j, monde->plateau[i][j].habitant->clan, monde->plateau[i][j].habitant->genre);
-			}
-		}
-	}
+	/* Affichage informations */
+	MLV_draw_text(CASE*(NBCOL + 1), CASE, "Tour %d du joueur %s", MLV_COLOR_WHITE, monde->tour, clan == monde->rouge ? "Rouge" : "Bleu");
+	MLV_draw_text(CASE*(NBCOL + 1), CASE*2, "Trésor : %d", MLV_COLOR_WHITE, *tresor);
+	MLV_actualise_window();
 
 	/* Production chateau */
 	chateau = clan;
@@ -821,18 +808,16 @@ int main(int argc, char *argv[])
 	/* Pour le chargement */
 	newclan = NULL;
 
+	/* Fenêtre graphique */
+	MLV_create_window("Game of stools", "Game of stools", CASE*(NBCOL + 10), CASE*(NBLIG+5));
+
 	/* Tours de jeu */
 	while (1) {
-		/* Demande de sauvegarde ou de chargement tous les 5 tours */
-		if (monde->tour % 5 == 0) {
-			sauvegarde_chargement = 1;
-		}
-		else {
-			sauvegarde_chargement = 0;
-		}
-
 		/* Un tour de jeu en plus */
 		monde->tour++;
+
+		/* Affichage du plateau */
+		affichePlateau(monde->plateau);
 
 		/* Production des chateaux */
 		productionChateau(monde->rouge, monde->plateau);

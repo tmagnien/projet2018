@@ -1,4 +1,4 @@
 default: gameofstools
 
 gameofstools: gameofstools.c gameofstools.h
-	gcc -g -lMLV gameofstools.c -o gameofstools
+	gcc -g gameofstools.c -lMLV -o gameofstools
