@@ -86,6 +86,10 @@ ajouteAgent(Agent *chateau, char genre, Case plateau[NBLIG][NBCOL])
 	/* Insertion dans la liste chaînée */
 	newagent->asuiv = agent->asuiv;
 	agent->asuiv = newagent;
+	if (newagent->asuiv != NULL) {
+		newagent->asuiv->aprec = newagent;
+	}
+	newagent->aprec = agent;
 
 	/* Ajout sur le plateau */
 	plateau[newagent->posx][newagent->posy].habitant = newagent;
@@ -137,22 +141,27 @@ void afficheCase(Case c, int i, int j)
 	}
 }
 
-void affichePlateau(Case plateau[NBLIG][NBCOL])
+void affichePlateau(Case plateau[NBLIG][NBCOL], int tour, char *clan, int tresor)
 {
 	int i, j;
+
+	MLV_clear_window(MLV_COLOR_BLACK);
 
 	for (i = 0; i < NBLIG; i++) {
 		for (j = 0; j < NBCOL; j++) {
 			afficheCase(plateau[i][j], i, j);
 		}
 	}
+	/* Affichage informations */
+	MLV_draw_text(CASE*(NBCOL + 1), CASE, "Tour %d du joueur %s", MLV_COLOR_WHITE, tour, clan);
+	MLV_draw_text(CASE*(NBCOL + 1), CASE*2, "Trésor : %d", MLV_COLOR_WHITE, tresor);
 	MLV_actualise_window();
 }
 
 int produireAgent(AListe chateau, int *tresor, char genre, int temps, int cout)
 {
 	/* Le chateau est-il déjà en train de produire ? */
-	if (chateau->temps >= 0) {
+	if (chateau->produit != LIBRE) {
 		printf("Production en cours.\n");
 		return 0;
 	}
@@ -188,6 +197,8 @@ int produireManant(AListe chateau, int *tresor)
 
 int productionChateau(AListe chateau, Case plateau[NBLIG][NBCOL])
 {
+	Agent *new_agent;
+
 	/* Production en cours ? */
 	if (chateau->produit == LIBRE) {
 		return 0;
@@ -211,11 +222,69 @@ int productionChateau(AListe chateau, Case plateau[NBLIG][NBCOL])
 	return 0;
 }
 
+Agent *
+resoudreCombat(Agent *agent, Agent *adversaire)
+{
+	int result_agent, result_adversaire;
+
+	/* Tirage de 100 */
+	/* Attaquant = baron ou guerrier */
+	switch(agent->genre) {
+		case BARON:
+			result_agent = ((random() % 100) + 1) * CBARON;
+			break;
+		case GUERRIER:
+			result_agent = ((random() % 100) + 1) * CGUERRIER;
+			break;
+	}
+	/* Adversaire = chateau, baron, guerrier ou manant */
+	switch(adversaire->genre) {
+		case CHATEAU:
+			result_adversaire = ((random() % 100) + 1) * CCHATEAU;
+			break;
+		case BARON:
+			result_adversaire = ((random() % 100) + 1) * CBARON;
+			break;
+		case GUERRIER:
+			result_adversaire = ((random() % 100) + 1) * CGUERRIER;
+			break;
+		case MANANT:
+			result_adversaire = ((random() % 100) + 1) * CMANANT;
+			break;
+	}
+
+	/* Comparaison */
+	if (result_agent > result_adversaire) {
+		return agent;
+	}
+	else {
+		return adversaire;
+	}
+}
+
+void changerAllegeance(Agent *manant, Agent *vainqueur)
+{
+	Agent *dernier_manant;
+
+	/* Changer la couleur du clan du manant */
+	manant->clan = vainqueur->clan;
+
+	/* Trouver le dernier manant du clan vainqueur */
+	dernier_manant = vainqueur;
+	while (dernier_manant->asuiv != NULL) {
+		dernier_manant = dernier_manant->asuiv;
+	}
+
+	/* Ajouter le manant */
+	dernier_manant->asuiv = manant;
+	manant->aprec = dernier_manant;
+}
+
 int deplacementCombattants(AListe chateau, Case plateau[NBLIG][NBCOL], int *tresor)
 {
-	int choix, deltax, deltay, newposx, newposy;
+	int choix, deltax, deltay, newposx, newposy, x, y;
 	char choix_chateau;
-	Agent *agent, *suiv;
+	Agent *agent, *suiv, *perdant;
 	AListe new_chateau;
 
 	agent = chateau;
@@ -254,22 +323,103 @@ int deplacementCombattants(AListe chateau, Case plateau[NBLIG][NBCOL], int *tres
 				newposy = suiv->posy;
 			}
 			/* Gestion case destination occupée */
-			if (plateau[suiv->posx + deltax][suiv->posy + deltay].habitant != NULL) {
-				/* On essaie de se déplacer sur un seul axe, au cas où */
-				if (plateau[suiv->posx][suiv->posy + deltay].habitant == NULL) {
-					newposx = suiv->posx;
-					newposy = suiv->posy + deltay;
+			if (plateau[suiv->posx + deltax][suiv->posy + deltay].habitant != NULL || plateau[suiv->posx + deltax][suiv->posy + deltay].chateau != NULL) {
+				/* La case destination est-elle occupée par un ennemi ? */
+				if (plateau[suiv->posx][suiv->posy + deltay].habitant != NULL && plateau[suiv->posx][suiv->posy + deltay].habitant->clan != suiv->clan) {
+					/* Combat contre un autre agent */
+					perdant = resoudreCombat(suiv, plateau[suiv->posx][suiv->posy + deltay].habitant);
+					if (perdant == suiv) {
+						/* Attaquant a perdu => destruction et retrait de la liste chaînée */
+						if (perdant->aprec != NULL) {
+							perdant->aprec->asuiv = perdant->asuiv;
+						}
+						if (perdant->asuiv != NULL) {
+							perdant->asuiv->aprec = perdant->aprec;
+						}
+						free(perdant);
+						/* Plus rien à déplacer */
+						continue;
+					}
+					else {
+						/* Attaquant a gagné => destruction du perdant et déplacement sur la case cible */
+						if (perdant->aprec != NULL) {
+							perdant->aprec->asuiv = perdant->asuiv;
+						}
+						if (perdant->asuiv != NULL) {
+							perdant->asuiv->aprec = perdant->aprec;
+						}
+						free(perdant);
+					}
 				}
-				else if (plateau[suiv->posx + deltax][suiv->posy].habitant == NULL) {
-					newposx = suiv->posx + deltax;
-					newposy = suiv->posy;
+				else if (plateau[suiv->posx][suiv->posy + deltay].chateau != NULL && plateau[suiv->posx][suiv->posy + deltay].chateau->clan != suiv->clan) {
+					/* Combat contre un chateau */
+					perdant = resoudreCombat(suiv, plateau[suiv->posx][suiv->posy + deltay].chateau);
+					if (perdant == suiv) {
+						/* Attaquant a perdu => destruction et retrait de la liste chaînée */
+						if (perdant->aprec != NULL) {
+							perdant->aprec->asuiv = perdant->asuiv;
+						}
+						if (perdant->asuiv != NULL) {
+							perdant->asuiv->aprec = perdant->aprec;
+						}
+						free(perdant);
+						/* Plus rien à déplacer */
+						continue;
+					}
+					else {
+						/* Attaquant a gagné */
+						/* Destruction des barons et guerriers et changement d'allégeance des manants */
+						Agent *ag, *agtemp;
+						ag = perdant;
+						while (ag != NULL) {
+							switch (ag->genre) {
+								case BARON:
+								case GUERRIER:
+									/* Destruction */
+									agtemp = ag->asuiv;
+									if (ag->aprec != NULL) {
+										ag->aprec->asuiv = ag->asuiv;
+									}
+									if (ag->asuiv != NULL) {
+										ag->asuiv->aprec = ag->aprec;
+									}
+									free(ag);
+									ag = agtemp;
+									break;
+								case MANANT:
+									/* Changement d'allégeance */
+									changerAllegeance(ag, suiv);
+									break;
+							}
+						}
+						/* Destruction du chateau */
+						if (perdant->vprec != NULL) {
+							perdant->vprec->vsuiv = perdant->vsuiv;
+						}
+						if (perdant->vsuiv != NULL) {
+							perdant->vsuiv->vprec = perdant->vprec;
+						}
+						free(perdant);
+					}
 				}
 				else {
-					/* Tant pis, on ne bouge pas à ce tour là */
-					agent = suiv;
-					continue;
+					/* On essaie de se déplacer sur un seul axe, au cas où */
+					if (plateau[suiv->posx][suiv->posy + deltay].habitant == NULL && plateau[suiv->posx][suiv->posy + deltay].chateau == NULL) {
+						newposx = suiv->posx;
+						newposy = suiv->posy + deltay;
+					}
+					else if (plateau[suiv->posx + deltax][suiv->posy].habitant == NULL && plateau[suiv->posx + deltax][suiv->posy].chateau == NULL) {
+						newposx = suiv->posx + deltax;
+						newposy = suiv->posy;
+					}
+					else {
+						/* Tant pis, on ne bouge pas à ce tour là */
+						agent = suiv;
+						continue;
+					}
 				}
 			}
+
 			/* Mise à jour plateau et coordonnées */
 			plateau[suiv->posx][suiv->posy].habitant = NULL;
 			suiv->posx = newposx;
@@ -280,9 +430,26 @@ int deplacementCombattants(AListe chateau, Case plateau[NBLIG][NBCOL], int *tres
 			continue;
 		}
 		/* Choix de la destination */
-		printf("Agent %c en position (%d,%d), votre choix :\n", suiv->genre, suiv->posx, suiv->posy);
-		printf("1 . Destruction\n2 . Déplacement\n");
-		scanf("%d", &choix);
+		MLV_draw_text(CASE*(NBCOL +1), CASE*3, "Agent %c en (%d,%d)", MLV_COLOR_WHITE, suiv->genre, suiv->posx, suiv->posy);
+		MLV_draw_text_box(CASE*(NBCOL+1), CASE*5, CASE*5, CASE, "Destruction", 0, MLV_COLOR_WHITE, MLV_COLOR_WHITE, MLV_COLOR_BLACK, MLV_TEXT_CENTER, MLV_HORIZONTAL_CENTER, MLV_VERTICAL_CENTER);
+		MLV_draw_text_box(CASE*(NBCOL+1), CASE*6, CASE*5, CASE, "Déplacement", 0, MLV_COLOR_WHITE, MLV_COLOR_WHITE, MLV_COLOR_BLACK, MLV_TEXT_CENTER, MLV_HORIZONTAL_CENTER, MLV_VERTICAL_CENTER);
+		/*MLV_draw_text_box(CASE*(NBCOL+1), CASE*9, CASE*5, CASE, "Fin de partie", 0, MLV_COLOR_WHITE, MLV_COLOR_WHITE, MLV_COLOR_BLACK, MLV_TEXT_CENTER, MLV_HORIZONTAL_CENTER, MLV_VERTICAL_CENTER);
+		MLV_draw_text_box(CASE*(NBCOL+1), CASE*11, CASE*5, CASE, "Sauvegarde", 0, MLV_COLOR_WHITE, MLV_COLOR_WHITE, MLV_COLOR_BLACK, MLV_TEXT_CENTER, MLV_HORIZONTAL_CENTER, MLV_VERTICAL_CENTER);
+		MLV_draw_text_box(CASE*(NBCOL+1), CASE*12, CASE*5, CASE, "Chargement", 0, MLV_COLOR_WHITE, MLV_COLOR_WHITE, MLV_COLOR_BLACK, MLV_TEXT_CENTER, MLV_HORIZONTAL_CENTER, MLV_VERTICAL_CENTER);*/
+		MLV_actualise_window();
+		choix = 0;
+		while (choix == 0) {
+			MLV_wait_mouse(&x, &y);
+			if (x < CASE*(NBCOL+1) || x > CASE*(NBCOL+1) + CASE*5) {
+				continue;
+			}
+			if (y >= CASE*5 && y < CASE*6) {
+				choix = 1;
+			}
+			else if (y >= CASE*6 && y < CASE*7) {
+				choix = 2;
+			}
+		}
 		switch (choix) {
 			case 1:
 				/* Destruction */
@@ -295,8 +462,16 @@ int deplacementCombattants(AListe chateau, Case plateau[NBLIG][NBCOL], int *tres
 				break;
 			case 2:
 				/* Déplacement */
-				printf("Destination x,y :\n");
-				scanf("%d,%d", &newposx, &newposy);
+				MLV_draw_text_box(CASE*(NBCOL+1), CASE*8, CASE*9, CASE, "Cliquez sur la destination", 0, MLV_COLOR_WHITE, MLV_COLOR_WHITE, MLV_COLOR_BLACK, MLV_TEXT_CENTER, MLV_HORIZONTAL_CENTER, MLV_VERTICAL_CENTER);
+				MLV_actualise_window();
+				x = -1;
+				y = -1;
+				while (x < 0 || y < 0 || x > CASE*NBCOL || y > CASE*NBLIG) {
+					MLV_wait_mouse(&x, &y);
+				}
+				/* Coordonnées x vs y */
+				newposx = (y / CASE);
+				newposy = (x / CASE);
 				/* On ramène à des coordonnées valides */
 				if (newposx < 0) {
 					newposx = 0;
@@ -315,10 +490,25 @@ int deplacementCombattants(AListe chateau, Case plateau[NBLIG][NBCOL], int *tres
 				/* Gestion du sur-place pour les barons */
 				if (suiv->genre == BARON && suiv->destx == suiv->posx && suiv->desty == suiv->posy && *tresor >= CCHATEAU) {
 					/* Revendication de la case */
-					printf("Construction d'un nouveau chateau (o/n) ?\n");
-					scanf(" %c", &choix_chateau);
-					if (choix_chateau == 'o' || choix_chateau == 'O') {
+					MLV_draw_text_box(CASE*(NBCOL+1), CASE*10, CASE*11, CASE, "Construire un nouveau chateau", 0, MLV_COLOR_WHITE, MLV_COLOR_WHITE, MLV_COLOR_BLACK, MLV_TEXT_CENTER, MLV_HORIZONTAL_CENTER, MLV_VERTICAL_CENTER);
+					MLV_draw_text_box(CASE*(NBCOL+1), CASE*11, CASE*12, CASE, "Ne rien faire", 0, MLV_COLOR_WHITE, MLV_COLOR_WHITE, MLV_COLOR_BLACK, MLV_TEXT_CENTER, MLV_HORIZONTAL_CENTER, MLV_VERTICAL_CENTER);
+					MLV_actualise_window();
+					choix_chateau = 0;
+					while (choix_chateau == 0) {
+						MLV_wait_mouse(&x, &y);
+						if (x < CASE*(NBCOL+1) || x > CASE*(NBCOL+1) + CASE*5) {
+							continue;
+						}
+						if (y >= CASE*10 && y < CASE*11) {
+							choix_chateau = 1;
+						}
+						else if (y >= CASE*11 && y < CASE*12) {
+							choix_chateau = 2;
+						}
+					}
+					if (choix_chateau == 1) {
 						new_chateau = ajouteChateau(chateau->vsuiv, suiv->clan, suiv->posx, suiv->posy);
+						new_chateau->vprec = chateau;
 						plateau[suiv->posx][suiv->posy].chateau = new_chateau;
 					}
 				}
@@ -335,7 +525,7 @@ int deplacementCombattants(AListe chateau, Case plateau[NBLIG][NBCOL], int *tres
 
 int deplacementManants(AListe chateau, Case plateau[NBLIG][NBCOL], int *tresor)
 {
-	int choix, deltax, deltay, newposx, newposy;
+	int choix, deltax, deltay, newposx, newposy, x, y;
 	Agent *agent, *suiv, *dernier_guerrier;
 
 	agent = chateau;
@@ -407,9 +597,26 @@ int deplacementManants(AListe chateau, Case plateau[NBLIG][NBCOL], int *tresor)
 			continue;
 		}
 		/* Choix de la destination */
-		printf("Agent %c en position (%d,%d), votre choix :\n", suiv->genre, suiv->posx, suiv->posy);
-		printf("1 . Destruction\n2 . Déplacement\n");
-		scanf("%d", &choix);
+		MLV_draw_text(CASE*(NBCOL +1), CASE*3, "Agent %c en (%d,%d)", MLV_COLOR_WHITE, suiv->genre, suiv->posx, suiv->posy);
+		MLV_draw_text_box(CASE*(NBCOL+1), CASE*5, CASE*5, CASE, "Destruction", 0, MLV_COLOR_WHITE, MLV_COLOR_WHITE, MLV_COLOR_BLACK, MLV_TEXT_CENTER, MLV_HORIZONTAL_CENTER, MLV_VERTICAL_CENTER);
+		MLV_draw_text_box(CASE*(NBCOL+1), CASE*6, CASE*5, CASE, "Déplacement", 0, MLV_COLOR_WHITE, MLV_COLOR_WHITE, MLV_COLOR_BLACK, MLV_TEXT_CENTER, MLV_HORIZONTAL_CENTER, MLV_VERTICAL_CENTER);
+		/*MLV_draw_text_box(CASE*(NBCOL+1), CASE*9, CASE*5, CASE, "Fin de partie", 0, MLV_COLOR_WHITE, MLV_COLOR_WHITE, MLV_COLOR_BLACK, MLV_TEXT_CENTER, MLV_HORIZONTAL_CENTER, MLV_VERTICAL_CENTER);
+		MLV_draw_text_box(CASE*(NBCOL+1), CASE*11, CASE*5, CASE, "Sauvegarde", 0, MLV_COLOR_WHITE, MLV_COLOR_WHITE, MLV_COLOR_BLACK, MLV_TEXT_CENTER, MLV_HORIZONTAL_CENTER, MLV_VERTICAL_CENTER);
+		MLV_draw_text_box(CASE*(NBCOL+1), CASE*12, CASE*5, CASE, "Chargement", 0, MLV_COLOR_WHITE, MLV_COLOR_WHITE, MLV_COLOR_BLACK, MLV_TEXT_CENTER, MLV_HORIZONTAL_CENTER, MLV_VERTICAL_CENTER);*/
+		MLV_actualise_window();
+		choix = 0;
+		while (choix == 0) {
+			MLV_wait_mouse(&x, &y);
+			if (x < CASE*(NBCOL+1) || x > CASE*(NBCOL+1) + CASE*5) {
+				continue;
+			}
+			if (y >= CASE*5 && y < CASE*6) {
+				choix = 1;
+			}
+			else if (y >= CASE*6 && y < CASE*7) {
+				choix = 2;
+			}
+		}
 		switch (choix) {
 			case 1:
 				/* Destruction */
@@ -422,8 +629,16 @@ int deplacementManants(AListe chateau, Case plateau[NBLIG][NBCOL], int *tresor)
 				break;
 			case 2:
 				/* Déplacement */
-				printf("Destination x,y :\n");
-				scanf("%d,%d", &newposx, &newposy);
+				MLV_draw_text_box(CASE*(NBCOL+1), CASE*8, CASE*9, CASE, "Cliquez sur la destination", 0, MLV_COLOR_WHITE, MLV_COLOR_WHITE, MLV_COLOR_BLACK, MLV_TEXT_CENTER, MLV_HORIZONTAL_CENTER, MLV_VERTICAL_CENTER);
+				MLV_actualise_window();
+				x = -1;
+				y = -1;
+				while (x < 0 || y < 0 || x > CASE*NBCOL || y > CASE*NBLIG) {
+					MLV_wait_mouse(&x, &y);
+				}
+				/* Coordonnées x vs y */
+				newposx = (y / CASE);
+				newposy = (x / CASE);
 				/* On ramène à des coordonnées valides */
 				if (newposx < 0) {
 					newposx = 0;
@@ -440,23 +655,39 @@ int deplacementManants(AListe chateau, Case plateau[NBLIG][NBCOL], int *tresor)
 				suiv->destx = newposx;
 				suiv->desty = newposy;
 				/* Gestion du sur-place pour les manants */
-				if (plateau[suiv->posx][suiv->posy].clan == suiv->clan && suiv->destx == suiv->posx && suiv->desty == suiv->posy) {
+				if (suiv->destx == suiv->posx && suiv->desty == suiv->posy) {
 					/* Ne rien faire, production ou se transformer en guerrier */
-					printf("Sur-place, votre choix :\n");
-					printf("1 . Ne rien faire\n2 . Produire\n3 . Se transformer en guerrier\n");
-					scanf("%d", &choix);
+					if (plateau[suiv->posx][suiv->posy].clan == suiv->clan) {
+						MLV_draw_text_box(CASE*(NBCOL+1), CASE*10, CASE*11, CASE, "Produire", 0, MLV_COLOR_WHITE, MLV_COLOR_WHITE, MLV_COLOR_BLACK, MLV_TEXT_CENTER, MLV_HORIZONTAL_CENTER, MLV_VERTICAL_CENTER);
+					}
+					MLV_draw_text_box(CASE*(NBCOL+1), CASE*11, CASE*12, CASE, "Transformation guerrier", 0, MLV_COLOR_WHITE, MLV_COLOR_WHITE, MLV_COLOR_BLACK, MLV_TEXT_CENTER, MLV_HORIZONTAL_CENTER, MLV_VERTICAL_CENTER);
+					MLV_draw_text_box(CASE*(NBCOL+1), CASE*12, CASE*13, CASE, "Ne rien faire", 0, MLV_COLOR_WHITE, MLV_COLOR_WHITE, MLV_COLOR_BLACK, MLV_TEXT_CENTER, MLV_HORIZONTAL_CENTER, MLV_VERTICAL_CENTER);
+					MLV_actualise_window();
+					choix = 0;
+					while (choix == 0) {
+						MLV_wait_mouse(&x, &y);
+						if (x < CASE*(NBCOL+1) || x > CASE*(NBCOL+1) + CASE*5) {
+							continue;
+						}
+						if (plateau[suiv->posx][suiv->posy].clan == suiv->clan && y >= CASE*10 && y < CASE*11) {
+							choix = 1;
+						}
+						else if (y >= CASE*11 && y < CASE*12) {
+							choix = 2;
+						}
+						else if (y >= CASE*12 && y < CASE*13) {
+							choix = 3;
+						}
+					}
 					switch (choix) {
 						case 1:
-							/* Ne rien faire */
-							break;
-						case 2:
 							/* Récolte */
 							*tresor++;
 							/* Définitivement immobile */
 							suiv->destx = -1;
 							suiv->desty = -1;
 							break;
-						case 3:
+						case 2:
 							/* Transformation en guerrier */
 							suiv->genre = GUERRIER;
 							/* Déplacement en fin de liste des guerriers */
@@ -465,10 +696,19 @@ int deplacementManants(AListe chateau, Case plateau[NBLIG][NBCOL], int *tresor)
 							while (dernier_guerrier->asuiv != NULL && dernier_guerrier->asuiv->genre != MANANT) {
 								dernier_guerrier = dernier_guerrier->asuiv;
 							}
-							/* On insère après l'élément courant */
+							/* On insère après le dernier guerrier */
 							agent->asuiv = suiv->asuiv;
+							if (suiv->asuiv != NULL) {
+								suiv->asuiv->aprec = agent;
+							}
 							suiv->asuiv = dernier_guerrier->asuiv;
 							dernier_guerrier->asuiv = suiv;
+							suiv->aprec = dernier_guerrier;
+							agent = agent->asuiv;
+							continue;
+							break;
+						case 3:
+							/* Ne rien faire */
 							break;
 					}
 				}
@@ -690,7 +930,35 @@ int choixProductionChateau(Agent *chateau, Monde *monde, int *tresor, AListe cla
 	MLV_draw_text_box(CASE*(NBCOL+1), CASE*11, CASE*5, CASE, "Sauvegarde", 0, MLV_COLOR_WHITE, MLV_COLOR_WHITE, MLV_COLOR_BLACK, MLV_TEXT_CENTER, MLV_HORIZONTAL_CENTER, MLV_VERTICAL_CENTER);
 	MLV_draw_text_box(CASE*(NBCOL+1), CASE*12, CASE*5, CASE, "Chargement", 0, MLV_COLOR_WHITE, MLV_COLOR_WHITE, MLV_COLOR_BLACK, MLV_TEXT_CENTER, MLV_HORIZONTAL_CENTER, MLV_VERTICAL_CENTER);
 	MLV_actualise_window();
-	MLV_wait_mouse(&x, &y);
+	choix = 0;
+	while (choix == 0) {
+		MLV_wait_mouse(&x, &y);
+		if (x < CASE*(NBCOL+1) || x > CASE*(NBCOL+1) + CASE*5) {
+			continue;
+		}
+		if (y >= CASE*5 && y < CASE*6) {
+			choix = 1;
+		}
+		else if (y >= CASE*6 && y < CASE*7) {
+			choix = 2;
+		}
+		else if (y >= CASE*7 && y < CASE*8) {
+			choix = 3;
+		}
+		else if (y >= CASE*8 && y < CASE*9) {
+			choix = 4;
+		}
+		else if (y >= CASE*9 && y < CASE*10) {
+			choix = 5;
+		}
+		else if (y >= CASE*11 && y < CASE*12) {
+			choix = 6;
+		}
+		else if (y >= CASE*12 && y < CASE*13) {
+			choix = 7;
+		}
+	}
+
 	switch (choix) {
 		case 1:
 			/* Attendre */
@@ -733,12 +1001,7 @@ int tourDeJeuClan(Monde *monde, AListe clan, int *tresor, int sauvegarde_chargem
 	Agent *agent, *chateau;
 
 	/* Affichage plateau */
-	affichePlateau(monde->plateau);
-
-	/* Affichage informations */
-	MLV_draw_text(CASE*(NBCOL + 1), CASE, "Tour %d du joueur %s", MLV_COLOR_WHITE, monde->tour, clan == monde->rouge ? "Rouge" : "Bleu");
-	MLV_draw_text(CASE*(NBCOL + 1), CASE*2, "Trésor : %d", MLV_COLOR_WHITE, *tresor);
-	MLV_actualise_window();
+	affichePlateau(monde->plateau, monde->tour, clan == monde->rouge ? "Rouge" : "Bleu", *tresor);
 
 	/* Production chateau */
 	chateau = clan;
@@ -754,6 +1017,7 @@ int tourDeJeuClan(Monde *monde, AListe clan, int *tresor, int sauvegarde_chargem
 	/* Déplacement et production combattants */
 	chateau = clan;
 	while (chateau != NULL) {
+		affichePlateau(monde->plateau, monde->tour, clan == monde->rouge ? "Rouge" : "Bleu", *tresor);
 		deplacementCombattants(chateau, monde->plateau, tresor);
 		chateau = chateau->vsuiv;
 	}
@@ -761,6 +1025,7 @@ int tourDeJeuClan(Monde *monde, AListe clan, int *tresor, int sauvegarde_chargem
 	/* Déplacement et production manants */
 	chateau = clan;
 	while (chateau != NULL) {
+		affichePlateau(monde->plateau, monde->tour, clan == monde->rouge ? "Rouge" : "Bleu", *tresor);
 		deplacementManants(chateau, monde->plateau, tresor);
 		chateau = chateau->vsuiv;
 	}
@@ -792,11 +1057,13 @@ int main(int argc, char *argv[])
 
 	/* Initialisation des listes d'agents */
 	chateau = ajouteChateau(monde->rouge, ROUGE, 0, 0);
+	chateau->vprec = monde->rouge;
 	monde->rouge = chateau;
 	monde->plateau[0][0].chateau = chateau;
 	baron = ajouteAgent(chateau, BARON, monde->plateau);
 	manant = ajouteAgent(chateau, MANANT, monde->plateau);
 	chateau = ajouteChateau(monde->bleu, BLEU, NBLIG-1, NBCOL-1);
+	chateau->vprec = monde->bleu;
 	monde->bleu = chateau;
 	monde->plateau[NBLIG-1][NBCOL-1].chateau = chateau;
 	baron = ajouteAgent(chateau, BARON, monde->plateau);
@@ -817,7 +1084,8 @@ int main(int argc, char *argv[])
 		monde->tour++;
 
 		/* Affichage du plateau */
-		affichePlateau(monde->plateau);
+		/*affichePlateau(monde->plateau);
+		affichePlateau(monde->plateau, monde->tour, clan == monde->rouge ? "Rouge" : "Bleu", *tresor);*/
 
 		/* Production des chateaux */
 		productionChateau(monde->rouge, monde->plateau);
