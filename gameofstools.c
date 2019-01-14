@@ -831,6 +831,15 @@ int chargementMonde(Monde *monde, AListe clan)
 		monde->tresorBleu = tresor1;
 	}
 
+	/* Initialisation cases */
+	for (i = 0; i < NBLIG; i++) {
+		for (j = 0; j < NBCOL; j++) {
+			monde->plateau[i][j].chateau = NULL;
+			monde->plateau[i][j].habitant = NULL;
+			monde->plateau[i][j].clan = LIBRE;
+		}
+	}
+
 	/* Chaque ligne représente les données d'un agent ou le tableau de jeu */
 	/* Numéro de la ligne du plateau en cours de lecture */
 	i = 0;
@@ -855,21 +864,20 @@ int chargementMonde(Monde *monde, AListe clan)
 					monde->rouge = calloc(1, sizeof(Agent));
 					chateauRouge = monde->rouge;
 					sscanf(ligne, "%c%c%c %d %d %d %d %d", &chateauRouge->clan, &chateauRouge->genre, &chateauRouge->produit, &chateauRouge->temps, &chateauRouge->posx, &chateauRouge->posy, &chateauRouge->destx, &chateauRouge->desty);
-					printf("Agent %c%c%c\n", chateauRouge->clan, chateauRouge->genre, chateauRouge->produit);
 					agentRouge = chateauRouge;
 				}
 				else {
 					agent = calloc(1, sizeof(Agent));
 					sscanf(ligne, "%c%c%c %d %d %d %d %d", &agent->clan, &agent->genre, &agent->produit, &agent->temps, &agent->posx, &agent->posy, &agent->destx, &agent->desty);
-					printf("Agent %c%c%c\n", agent->clan, agent->genre, agent->produit);
 					if (agent->genre == CHATEAU) {
-						printf("Ajout chateau\n");
 						chateauRouge->vsuiv = agent;
+						agent->vprec = chateauRouge;
 						chateauRouge = chateauRouge->vsuiv;
 						agentRouge = chateauRouge;
 					}
 					else {
 						agentRouge->asuiv = agent;
+						agent->aprec = agentRouge;
 						agentRouge = agentRouge->asuiv;
 					}
 				}
@@ -885,18 +893,21 @@ int chargementMonde(Monde *monde, AListe clan)
 				if (monde->bleu == NULL) {
 					/* On crée le clan bleu */
 					monde->bleu = calloc(1, sizeof(Agent));
-					agentBleu = monde->bleu;
-					sscanf(ligne, "%c%c%c %d %d %d %d %d", &agentBleu->clan, &agentBleu->genre, &agentBleu->produit, &agentBleu->temps, &agentBleu->posx, &agentBleu->posy, &agentBleu->destx, &agentBleu->desty);
+					chateauBleu = monde->bleu;
+					agentBleu = chateauBleu;
 				}
 				else {
 					agent = calloc(1, sizeof(Agent));
 					sscanf(ligne, "%c%c%c %d %d %d %d %d", &agent->clan, &agent->genre, &agent->produit, &agent->temps, &agent->posx, &agent->posy, &agent->destx, &agent->desty);
 					if (agent->genre == CHATEAU) {
-						agentBleu->vsuiv = agent;
-						agentBleu = agentBleu->vsuiv;
+						chateauBleu->vsuiv = agent;
+						agent->vprec = chateauBleu;
+						chateauBleu = chateauBleu->vsuiv;
+						agentBleu = chateauBleu;
 					}
 					else {
 						agentBleu->asuiv = agent;
+						agent->aprec = agentBleu;
 						agentBleu = agentBleu->asuiv;
 					}
 				}
@@ -1082,10 +1093,6 @@ int main(int argc, char *argv[])
 	while (1) {
 		/* Un tour de jeu en plus */
 		monde->tour++;
-
-		/* Affichage du plateau */
-		/*affichePlateau(monde->plateau);
-		affichePlateau(monde->plateau, monde->tour, clan == monde->rouge ? "Rouge" : "Bleu", *tresor);*/
 
 		/* Production des chateaux */
 		productionChateau(monde->rouge, monde->plateau);
